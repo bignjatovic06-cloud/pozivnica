@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Events - samo creator može čitati/pisati
+    match /events/{eventId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.adminId;
+      allow create: if request.auth != null;
+
+      // Guests - svi mogu kreirati (RSVP), admin može čitati sve
+      match /guests/{guestId} {
+        allow create: if true; // RSVP bez logina
+        allow read, update, delete: if request.auth != null &&
+          request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.adminId;
+        allow read: if request.auth != null && request.auth.uid == guestId;
+      }
+
+      // Photos - gosti mogu dodavati i brisati svoje, admin vidi sve
+      match /photos/{photoId} {
+        allow create: if true;
+        allow read: if true;
+        allow delete: if request.auth != null && (
+          request.auth.uid == resource.data.guestId ||
+          request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.adminId
+        );
+      }
+
+      // Tables - samo admin
+      match /tables/{tableId} {
+        allow read, write: if request.auth != null &&
+          request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.adminId;
+        allow read: if true; // Gosti vide raspored
+      }
+    }
+  }
+}
