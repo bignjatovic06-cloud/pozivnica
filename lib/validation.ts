@@ -58,8 +58,9 @@ export const createEventSchema = z.object({
   dressCode: z.string().min(2),
   parkingInfo: z.string(),
   eventTimeline: z.array(eventTimelineSchema),
-  adminEmail: z.string().email("Nevažeća email adresa"),
-  adminPassword: z.string().min(6, "Lozinka mora imati najmanje 6 karaktera"),
+  // Pristupni podaci koje vlasnik kreira za klijenta (domaćina)
+  clientEmail: z.string().email("Nevažeća email adresa"),
+  clientPassword: z.string().min(6, "Lozinka mora imati najmanje 6 karaktera"),
 });
 
 export const adminLoginSchema = z.object({

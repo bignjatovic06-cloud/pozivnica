@@ -18,19 +18,31 @@ import {
 import { db } from "./firebase";
 import type { Event, Guest, Table, Photo, RSVPStats } from "./types";
 
+// --- Owners ---
+
+// Vlasnik servisa — jedini smije kreirati evente. Dokument owners/{uid}
+// se dodaje ručno u Firebase konzoli (vidi SETUP.md)
+export async function isOwner(uid: string): Promise<boolean> {
+  const snap = await getDoc(doc(db, "owners", uid));
+  return snap.exists();
+}
+
 // --- Events ---
+
+function mapEvent(id: string, d: Record<string, unknown>): Event {
+  return {
+    id,
+    ...d,
+    date: d.date instanceof Timestamp ? d.date.toDate() : new Date(d.date as string),
+    createdAt: d.createdAt instanceof Timestamp ? d.createdAt.toDate() : new Date(),
+    updatedAt: d.updatedAt instanceof Timestamp ? d.updatedAt.toDate() : new Date(),
+  } as Event;
+}
 
 export async function getEvent(eventId: string): Promise<Event | null> {
   const snap = await getDoc(doc(db, "events", eventId));
   if (!snap.exists()) return null;
-  const d = snap.data();
-  return {
-    id: snap.id,
-    ...d,
-    date: d.date instanceof Timestamp ? d.date.toDate() : new Date(d.date),
-    createdAt: d.createdAt instanceof Timestamp ? d.createdAt.toDate() : new Date(),
-    updatedAt: d.updatedAt instanceof Timestamp ? d.updatedAt.toDate() : new Date(),
-  } as Event;
+  return mapEvent(snap.id, snap.data());
 }
 
 export async function getEventsByAdmin(adminId: string): Promise<Event[]> {
@@ -38,14 +50,24 @@ export async function getEventsByAdmin(adminId: string): Promise<Event[]> {
   // sortiramo klijentski da setup radi odmah bez ručnog kreiranja indexa
   const q = query(collection(db, "events"), where("adminId", "==", adminId));
   const snap = await getDocs(q);
-  const events = snap.docs.map((d) => ({
-    id: d.id,
-    ...d.data(),
-    date: d.data().date instanceof Timestamp ? d.data().date.toDate() : new Date(d.data().date),
-    createdAt: d.data().createdAt instanceof Timestamp ? d.data().createdAt.toDate() : new Date(),
-    updatedAt: d.data().updatedAt instanceof Timestamp ? d.data().updatedAt.toDate() : new Date(),
-  })) as Event[];
+  const events = snap.docs.map((d) => mapEvent(d.id, d.data()));
   return events.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+export async function getEventsByOwner(ownerId: string): Promise<Event[]> {
+  const q = query(collection(db, "events"), where("ownerId", "==", ownerId));
+  const snap = await getDocs(q);
+  const events = snap.docs.map((d) => mapEvent(d.id, d.data()));
+  return events.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+// Vlasnik vidi evente koje je kreirao za klijente + svoje stare evente,
+// klijent samo evente kojima je dodijeljen kao admin
+export async function getEventsForUser(uid: string, owner: boolean): Promise<Event[]> {
+  if (!owner) return getEventsByAdmin(uid);
+  const [owned, administered] = await Promise.all([getEventsByOwner(uid), getEventsByAdmin(uid)]);
+  const unique = new Map([...owned, ...administered].map((e) => [e.id, e]));
+  return [...unique.values()].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
 export async function createEvent(data: Omit<Event, "id" | "createdAt" | "updatedAt">): Promise<string> {

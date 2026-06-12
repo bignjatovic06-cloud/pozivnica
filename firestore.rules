@@ -2,26 +2,46 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isEventAdmin(eventId) {
+    // Vlasnik servisa — dokument owners/{uid} se dodaje ručno u Firebase
+    // konzoli (vidi SETUP.md). Jedini smije kreirati evente.
+    function isServiceOwner() {
       return request.auth != null &&
-        request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.adminId;
+        exists(/databases/$(database)/documents/owners/$(request.auth.uid));
+    }
+
+    // Eventom upravljaju klijent (adminId) i vlasnik servisa koji ga je
+    // kreirao (ownerId)
+    function canManageEvent(eventId) {
+      let ev = get(/databases/$(database)/documents/events/$(eventId)).data;
+      return request.auth != null &&
+        (request.auth.uid == ev.adminId || request.auth.uid == ev.ownerId);
+    }
+
+    match /owners/{uid} {
+      // Korisnik provjerava samo svoj vlasnički status (AuthContext)
+      allow get: if request.auth != null && request.auth.uid == uid;
+      // Vlasnici se dodaju isključivo kroz Firebase konzolu
+      allow list, create, update, delete: if false;
     }
 
     match /events/{eventId} {
       // Gosti otvaraju pozivnicu bez logina — pojedinačno čitanje je javno
       allow get: if true;
-      // Listanje evenata samo za vlasnika (dashboard upit: where adminId == uid)
-      allow list: if request.auth != null && resource.data.adminId == request.auth.uid;
-      allow create: if request.auth != null && request.resource.data.adminId == request.auth.uid;
-      allow update, delete: if request.auth != null && resource.data.adminId == request.auth.uid;
+      // Dashboard upiti: where adminId == uid (klijent) ili where ownerId == uid (vlasnik)
+      allow list: if request.auth != null &&
+        (resource.data.adminId == request.auth.uid || resource.data.ownerId == request.auth.uid);
+      // Evente kreira samo vlasnik servisa, sa svojim uid-om kao ownerId
+      allow create: if isServiceOwner() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if request.auth != null &&
+        (resource.data.adminId == request.auth.uid || resource.data.ownerId == request.auth.uid);
 
       match /guests/{guestId} {
         // Gost čita svoj RSVP preko ID-a sačuvanog u svom browseru
         allow get: if true;
         // RSVP se šalje bez logina
         allow create: if true;
-        // Lista svih gostiju, izmjene i brisanje — samo admin
-        allow list, update, delete: if isEventAdmin(eventId);
+        // Lista svih gostiju, izmjene i brisanje — klijent i vlasnik
+        allow list, update, delete: if canManageEvent(eventId);
       }
 
       match /photos/{photoId} {
@@ -35,7 +55,7 @@ service cloud.firestore {
       match /tables/{tableId} {
         // Gosti vide raspored sjedenja (tab "Moj stol")
         allow read: if true;
-        allow write: if isEventAdmin(eventId);
+        allow write: if canManageEvent(eventId);
       }
     }
   }

@@ -3,17 +3,17 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Calendar, Users, ExternalLink, Heart } from "lucide-react";
+import { Plus, Calendar, Users, ExternalLink, Heart, Mail } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { getEventsByAdmin } from "@/lib/db";
+import { getEventsForUser } from "@/lib/db";
 import { logOut } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
 import LoadingSpinner from "@/components/common/LoadingSpinner";
 
 export default function DashboardPage() {
-  const { user, loading } = useAuth();
+  const { user, loading, isOwner } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -21,8 +21,8 @@ export default function DashboardPage() {
   }, [user, loading, router]);
 
   const { data: events, isLoading } = useQuery({
-    queryKey: ["events", user?.uid],
-    queryFn: () => getEventsByAdmin(user!.uid),
+    queryKey: ["events", user?.uid, isOwner],
+    queryFn: () => getEventsForUser(user!.uid, isOwner),
     enabled: !!user,
   });
 
@@ -61,19 +61,30 @@ export default function DashboardPage() {
       <div className="max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-[#8B5A8E]">Vaši eventi</h1>
-          <Link href="/admin/create" className="btn-primary flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Novi event
-          </Link>
+          {isOwner && (
+            <Link href="/admin/create" className="btn-primary flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Novi event
+            </Link>
+          )}
         </div>
 
         {events?.length === 0 ? (
           <div className="card text-center py-16">
             <Heart className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-600 mb-2">Nemate još nijedan event</h3>
-            <p className="text-gray-400 mb-6">Kreirajte vaš prvi event i podijelite pozivnicu sa gostima</p>
-            <Link href="/admin/create" className="btn-primary inline-flex items-center gap-2">
-              <Plus className="w-4 h-4" /> Kreiraj event
-            </Link>
+            {isOwner ? (
+              <>
+                <h3 className="text-xl font-semibold text-gray-600 mb-2">Nemate još nijedan event</h3>
+                <p className="text-gray-400 mb-6">Kreirajte prvi event za klijenta i pošaljite mu pristup</p>
+                <Link href="/admin/create" className="btn-primary inline-flex items-center gap-2">
+                  <Plus className="w-4 h-4" /> Kreiraj event
+                </Link>
+              </>
+            ) : (
+              <>
+                <h3 className="text-xl font-semibold text-gray-600 mb-2">Još vam nije dodijeljen nijedan event</h3>
+                <p className="text-gray-400">Vaša pozivnica je u izradi — javite se organizatoru ako mislite da je ovo greška.</p>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -98,6 +109,12 @@ export default function DashboardPage() {
                     <Users className="w-4 h-4 text-[#8B5A8E]" />
                     {event.location}
                   </div>
+                  {isOwner && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Mail className="w-4 h-4 text-[#8B5A8E]" />
+                      Klijent: {event.adminEmail}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-3">

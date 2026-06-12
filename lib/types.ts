@@ -44,8 +44,11 @@ export interface Event {
   dressCode: string;
   parkingInfo: string;
   eventTimeline: EventTimeline[];
+  // Klijent (domaćin) — upravlja svojim eventom kroz admin panel
   adminId: string;
   adminEmail: string;
+  // Vlasnik servisa koji je kreirao event (opciono zbog starih dokumenata)
+  ownerId?: string;
   createdAt: Date;
   updatedAt: Date;
   status: EventStatus;

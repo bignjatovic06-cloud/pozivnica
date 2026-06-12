@@ -42,7 +42,8 @@ export default function AdminEventPage() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (event && user && event.adminId !== user.uid) {
+    // Pristup imaju klijent (adminId) i vlasnik servisa koji je kreirao event
+    if (event && user && event.adminId !== user.uid && event.ownerId !== user.uid) {
       toast.error("Nemate pristup ovom eventu");
       router.push("/admin/dashboard");
     }

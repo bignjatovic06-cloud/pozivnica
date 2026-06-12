@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Trash2, Heart, ArrowLeft } from "lucide-react";
+import { Plus, Trash2, Heart, ArrowLeft, RefreshCw, Copy, Check, PartyPopper } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { signUp } from "@/lib/auth";
+import { useAuth } from "@/contexts/AuthContext";
+import { createClientAccount } from "@/lib/auth";
 import { createEvent } from "@/lib/db";
 import { createEventSchema, type CreateEventFormData } from "@/lib/validation";
+import LoadingSpinner from "@/components/common/LoadingSpinner";
 
 const DEFAULT_TIMELINE = [
   { time: "18:00", title: "Ceremonija", description: "Vjenčanje i fotografisanje" },
@@ -19,11 +21,36 @@ const DEFAULT_TIMELINE = [
   { time: "23:30", title: "Kraj", description: "Hvala što ste bili sa nama" },
 ];
 
+function generatePassword(): string {
+  // Bez sličnih znakova (l/1, O/0) — lozinka se diktira klijentu preko telefona
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const values = new Uint32Array(10);
+  crypto.getRandomValues(values);
+  return Array.from(values, (v) => chars[v % chars.length]).join("");
+}
+
+interface CreatedEvent {
+  eventId: string;
+  email: string;
+  password: string;
+  coupleNames: string;
+}
+
 export default function CreateEventPage() {
   const router = useRouter();
+  const { user, loading, isOwner } = useAuth();
   const [step, setStep] = useState(1);
+  const [created, setCreated] = useState<CreatedEvent | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm<CreateEventFormData>({
+  // Evente kreira samo vlasnik servisa — klijenti idu na svoj dashboard
+  useEffect(() => {
+    if (loading) return;
+    if (!user) router.push("/admin/login");
+    else if (!isOwner) router.push("/admin/dashboard");
+  }, [user, loading, isOwner, router]);
+
+  const { register, handleSubmit, control, setValue, formState: { errors, isSubmitting } } = useForm<CreateEventFormData>({
     resolver: zodResolver(createEventSchema),
     defaultValues: { eventTimeline: DEFAULT_TIMELINE },
   });
@@ -32,7 +59,7 @@ export default function CreateEventPage() {
 
   const onSubmit = async (data: CreateEventFormData) => {
     try {
-      const user = await signUp(data.adminEmail, data.adminPassword);
+      const clientUid = await createClientAccount(data.clientEmail, data.clientPassword);
       const eventId = await createEvent({
         name: data.name,
         coupleNames: data.coupleNames,
@@ -44,28 +71,120 @@ export default function CreateEventPage() {
         dressCode: data.dressCode,
         parkingInfo: data.parkingInfo,
         eventTimeline: data.eventTimeline,
-        adminId: user.uid,
-        adminEmail: data.adminEmail,
+        adminId: clientUid,
+        adminEmail: data.clientEmail,
+        ownerId: user!.uid,
         status: "active",
       });
-      toast.success("Event uspješno kreiran!");
-      router.push(`/admin/${eventId}`);
+      setCreated({ eventId, email: data.clientEmail, password: data.clientPassword, coupleNames: data.coupleNames });
+      toast.success("Event kreiran!");
     } catch (err: unknown) {
       const errorCode = (err as { code?: string }).code;
-      if (errorCode === "auth/email-already-in-use") {
-        toast.error("Email je već registrovan. Prijavite se.");
-        router.push("/admin/login");
+      if (errorCode === "auth/email-already-in-use" || errorCode === "auth/invalid-credential" || errorCode === "auth/wrong-password") {
+        toast.error("Email je već registrovan sa drugom lozinkom — koristite drugi email za klijenta.");
       } else {
         toast.error("Greška pri kreiranju eventa");
       }
     }
   };
 
+  const copy = async (text: string, field: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    toast.success("Kopirano!");
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  if (loading || !user || !isOwner) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
+
+  // Ekran nakon kreiranja — podaci koje vlasnik šalje klijentu
+  if (created) {
+    const origin = window.location.origin;
+    const inviteUrl = `${origin}/event/${created.eventId}`;
+    const clientMessage = `Vaša digitalna pozivnica je spremna! 🎉
+
+📨 Link pozivnice — pošaljite ga gostima:
+${inviteUrl}
+
+🔐 Admin panel — pratite RSVP, raspored sjedenja i fotografije:
+${origin}/admin/login
+Email: ${created.email}
+Lozinka: ${created.password}`;
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-amber-50 py-8 px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="card text-center space-y-6 animate-fadeIn">
+            <div className="w-16 h-16 bg-[#8B5A8E]/10 rounded-full flex items-center justify-center mx-auto">
+              <PartyPopper className="w-8 h-8 text-[#8B5A8E]" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-[#8B5A8E]">Pozivnica za {created.coupleNames} je spremna!</h1>
+              <p className="text-gray-500 mt-2">Pošaljite klijentu link pozivnice i pristupne podatke za admin panel.</p>
+            </div>
+
+            <div className="text-left space-y-3">
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">Link pozivnice (za goste)</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-800 truncate flex-1">{inviteUrl}</span>
+                  <button onClick={() => copy(inviteUrl, "url")} className="text-[#8B5A8E] hover:text-[#6d4570] flex-shrink-0">
+                    {copiedField === "url" ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-1">Pristup admin panelu (za klijenta)</p>
+                <div className="space-y-1 text-sm text-gray-800">
+                  <p>Prijava: <span className="text-gray-500">{origin}/admin/login</span></p>
+                  <p>Email: <strong>{created.email}</strong></p>
+                  <div className="flex items-center gap-2">
+                    <p>Lozinka: <strong className="font-mono">{created.password}</strong></p>
+                    <button onClick={() => copy(created.password, "pass")} className="text-[#8B5A8E] hover:text-[#6d4570]">
+                      {copiedField === "pass" ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button onClick={() => copy(clientMessage, "msg")} className="btn-primary w-full flex items-center justify-center gap-2">
+                {copiedField === "msg" ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                Kopiraj cijelu poruku za klijenta
+              </button>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-left">
+              <p className="text-sm text-amber-800">
+                <strong>Važno:</strong> Lozinka se poslije ovog ekrana ne može ponovo vidjeti — kopirajte poruku i pošaljite je klijentu odmah.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Link href="/admin/dashboard" className="btn-secondary flex-1 text-center">
+                Dashboard
+              </Link>
+              <Link href={`/admin/${created.eventId}`} className="btn-primary flex-1 text-center">
+                Otvori admin panel
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-amber-50 py-8 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-4 mb-8">
-          <Link href="/" className="p-2 rounded-lg hover:bg-white transition-colors">
+          <Link href="/admin/dashboard" className="p-2 rounded-lg hover:bg-white transition-colors">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </Link>
           <div className="flex items-center gap-2">
@@ -76,7 +195,7 @@ export default function CreateEventPage() {
 
         {/* Steps indicator */}
         <div className="flex gap-2 mb-8">
-          {["Detalji eventa", "Timeline", "Vaš račun"].map((label, i) => (
+          {["Detalji eventa", "Timeline", "Pristup za klijenta"].map((label, i) => (
             <div key={label} className="flex-1">
               <div className={`h-2 rounded-full transition-colors ${step > i ? "bg-[#8B5A8E]" : "bg-gray-200"}`} />
               <p className={`text-xs mt-1 text-center ${step === i + 1 ? "text-[#8B5A8E] font-medium" : "text-gray-400"}`}>{label}</p>
@@ -197,33 +316,45 @@ export default function CreateEventPage() {
                   ← Nazad
                 </button>
                 <button type="button" onClick={() => setStep(3)} className="btn-primary flex-1">
-                  Dalje: Vaš račun →
+                  Dalje: Pristup za klijenta →
                 </button>
               </div>
             </div>
           )}
 
-          {/* Step 3: Account */}
+          {/* Step 3: Client access */}
           {step === 3 && (
             <div className="card space-y-5 animate-fadeIn">
-              <h2 className="text-xl font-semibold text-gray-800">Kreirajte vaš admin račun</h2>
-              <p className="text-sm text-gray-500">Koristićete ove podatke za pristup admin panelu</p>
+              <h2 className="text-xl font-semibold text-gray-800">Pristup za klijenta</h2>
+              <p className="text-sm text-gray-500">
+                Napravite nalog za mladence — s njim se prijavljuju u admin panel i prate RSVP, raspored sjedenja i fotografije.
+              </p>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email adresa *</label>
-                <input {...register("adminEmail")} type="email" className="input-field" placeholder="vasa@email.com" />
-                {errors.adminEmail && <p className="text-red-500 text-xs mt-1">{errors.adminEmail.message}</p>}
+                <label className="block text-sm font-medium text-gray-700 mb-2">Email klijenta *</label>
+                <input {...register("clientEmail")} type="email" className="input-field" placeholder="mladenci@email.com" />
+                {errors.clientEmail && <p className="text-red-500 text-xs mt-1">{errors.clientEmail.message}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Lozinka *</label>
-                <input {...register("adminPassword")} type="password" className="input-field" placeholder="Najmanje 6 karaktera" />
-                {errors.adminPassword && <p className="text-red-500 text-xs mt-1">{errors.adminPassword.message}</p>}
+                <label className="block text-sm font-medium text-gray-700 mb-2">Lozinka za klijenta *</label>
+                <div className="flex gap-2">
+                  <input {...register("clientPassword")} type="text" className="input-field font-mono" placeholder="Najmanje 6 karaktera" />
+                  <button
+                    type="button"
+                    onClick={() => setValue("clientPassword", generatePassword(), { shouldValidate: true })}
+                    className="btn-secondary flex items-center gap-2 flex-shrink-0"
+                  >
+                    <RefreshCw className="w-4 h-4" /> Generiši
+                  </button>
+                </div>
+                {errors.clientPassword && <p className="text-red-500 text-xs mt-1">{errors.clientPassword.message}</p>}
               </div>
 
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                 <p className="text-sm text-amber-800">
-                  <strong>Napomena:</strong> Zapamtite ove podatke — koristite ih svaki put kad se prijavite u admin panel.
+                  <strong>Napomena:</strong> Ove podatke šaljete klijentu nakon kreiranja — na sljedećem ekranu dobijate
+                  gotovu poruku sa linkom pozivnice i pristupom.
                 </p>
               </div>
 

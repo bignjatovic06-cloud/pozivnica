@@ -79,9 +79,9 @@ export default function AdminLoginPage() {
           </form>
 
           <p className="text-center text-sm text-gray-500 mt-4">
-            Nemate account?{" "}
-            <Link href="/admin/create" className="text-[#8B5A8E] font-semibold hover:underline">
-              Kreirajte event
+            Pristupne podatke dobijate uz vašu pozivnicu —{" "}
+            <Link href="/#kontakt" className="text-[#8B5A8E] font-semibold hover:underline">
+              zatražite pozivnicu
             </Link>
           </p>
         </div>
