@@ -34,15 +34,18 @@ export async function getEvent(eventId: string): Promise<Event | null> {
 }
 
 export async function getEventsByAdmin(adminId: string): Promise<Event[]> {
-  const q = query(collection(db, "events"), where("adminId", "==", adminId), orderBy("createdAt", "desc"));
+  // Bez orderBy u upitu — where + orderBy traži composite index u Firestore;
+  // sortiramo klijentski da setup radi odmah bez ručnog kreiranja indexa
+  const q = query(collection(db, "events"), where("adminId", "==", adminId));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({
+  const events = snap.docs.map((d) => ({
     id: d.id,
     ...d.data(),
     date: d.data().date instanceof Timestamp ? d.data().date.toDate() : new Date(d.data().date),
     createdAt: d.data().createdAt instanceof Timestamp ? d.data().createdAt.toDate() : new Date(),
     updatedAt: d.data().updatedAt instanceof Timestamp ? d.data().updatedAt.toDate() : new Date(),
   })) as Event[];
+  return events.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
 export async function createEvent(data: Omit<Event, "id" | "createdAt" | "updatedAt">): Promise<string> {
@@ -111,8 +114,7 @@ export async function deleteGuest(eventId: string, guestId: string): Promise<voi
   await deleteDoc(doc(db, "events", eventId, "guests", guestId));
 }
 
-export async function getRSVPStats(eventId: string): Promise<RSVPStats> {
-  const guests = await getGuests(eventId);
+export function computeRSVPStats(guests: Guest[]): RSVPStats {
   const confirmed = guests.filter((g) => g.status === "confirmed");
   const declined = guests.filter((g) => g.status === "declined");
   const maybe = guests.filter((g) => g.status === "maybe");
@@ -135,6 +137,10 @@ export async function getRSVPStats(eventId: string): Promise<RSVPStats> {
     totalPeople: allPeople,
     dietary,
   };
+}
+
+export async function getRSVPStats(eventId: string): Promise<RSVPStats> {
+  return computeRSVPStats(await getGuests(eventId));
 }
 
 // --- Tables ---
@@ -169,15 +175,17 @@ export async function deleteAllTables(eventId: string): Promise<void> {
 
 export async function getPhotos(eventId: string, guestId?: string): Promise<Photo[]> {
   const colRef = collection(db, "events", eventId, "photos");
+  // where + orderBy bi tražio composite index — filtriramo upitom, sortiramo klijentski
   const q = guestId
-    ? query(colRef, where("guestId", "==", guestId), orderBy("uploadedAt", "desc"))
+    ? query(colRef, where("guestId", "==", guestId))
     : query(colRef, orderBy("uploadedAt", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({
+  const photos = snap.docs.map((d) => ({
     id: d.id,
     ...d.data(),
     uploadedAt: d.data().uploadedAt instanceof Timestamp ? d.data().uploadedAt.toDate() : new Date(),
   })) as Photo[];
+  return guestId ? photos.sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime()) : photos;
 }
 
 export async function addPhoto(eventId: string, data: Omit<Photo, "id" | "uploadedAt">): Promise<string> {

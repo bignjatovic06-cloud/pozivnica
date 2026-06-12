@@ -1,3 +1,6 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
 import { Calendar, Clock, MapPin, Car, Shirt } from "lucide-react";
 import type { Event } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
@@ -6,7 +9,17 @@ interface Props {
   event: Event;
 }
 
+const emptySubscribe = () => () => {};
+
 export default function InfoTab({ event }: Props) {
+  // window.location ne postoji na serveru — server render vraća "",
+  // klijent pravi URL, bez hydration mismatcha
+  const shareUrl = useSyncExternalStore(
+    emptySubscribe,
+    () => window.location.href,
+    () => ""
+  );
+
   const details = [
     { icon: Calendar, label: "Datum", value: formatDate(event.date) },
     { icon: Clock, label: "Vrijeme", value: `${event.time} — ${event.endTime}` },
@@ -76,7 +89,7 @@ export default function InfoTab({ event }: Props) {
 
       {/* Viber share */}
       <a
-        href={`viber://forward?text=${encodeURIComponent(`Pozivnica za ${event.coupleNames}: ${typeof window !== 'undefined' ? window.location.href : ''}`)}`}
+        href={`viber://forward?text=${encodeURIComponent(`Pozivnica za ${event.coupleNames}: ${shareUrl}`)}`}
         className="block card hover:shadow-md transition-shadow text-center"
       >
         <div className="flex items-center justify-center gap-2 font-semibold" style={{ color: "#7360f2" }}>

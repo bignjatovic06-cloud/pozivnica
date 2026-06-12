@@ -94,12 +94,16 @@ export default function SeatingChartBuilder({ eventId }: Props) {
     const y = e.clientY - rect.top - dragState.offsetY;
 
     if (dragState.type === "new" && dragState.tableType !== undefined && dragState.capacity !== undefined) {
+      // max + 1 umjesto length + 1 — nakon brisanja stola length+1 pravi duple brojeve
+      const nextNumber = tables
+        .filter((t) => t.type !== "stage")
+        .reduce((max, t) => Math.max(max, t.tableNumber), 0) + 1;
       const newTable: Table = {
         id: uuidv4(),
         eventId,
         type: dragState.tableType,
         capacity: dragState.capacity,
-        tableNumber: tables.length + 1,
+        tableNumber: dragState.tableType === "stage" ? 0 : nextNumber,
         assignedGuests: [],
         notes: "",
         position: { x: Math.max(0, x), y: Math.max(0, y) },
@@ -119,10 +123,25 @@ export default function SeatingChartBuilder({ eventId }: Props) {
     setDragState(null);
   };
 
+  const computeDietarySummary = (table: Table) => {
+    const summary = { omnivore: 0, vegetarian: 0, vegan: 0, glutenfree: 0 };
+    getGuestsOnTable(table).forEach((g) => {
+      const members = g.partyMembers?.length ? g.partyMembers : [{ dietaryNeeds: g.dietaryNeeds }];
+      members.forEach((m) => { summary[m.dietaryNeeds as keyof typeof summary]++; });
+    });
+    return summary;
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      await Promise.all(tables.map((t) => saveTable(eventId, t.id, { ...t, id: undefined } as Omit<Table, "id">)));
+      await Promise.all(
+        tables.map((t) => {
+          // Firestore odbija polja sa vrijednošću undefined — id se mora izdvojiti, ne postaviti na undefined
+          const { id, ...data } = t;
+          return saveTable(eventId, id, { ...data, dietarySummary: computeDietarySummary(t) });
+        })
+      );
       await Promise.all(
         confirmedGuests.map((g) => {
           const table = tables.find((t) => t.assignedGuests.includes(g.id));

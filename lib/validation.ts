@@ -2,21 +2,44 @@ import { z } from "zod";
 
 export const partyMemberSchema = z.object({
   id: z.string(),
-  firstName: z.string().min(2, "Ime mora imati najmanje 2 slova"),
-  lastName: z.string().min(2, "Prezime mora imati najmanje 2 slova"),
+  firstName: z.string(),
+  lastName: z.string(),
   dietaryNeeds: z.enum(["omnivore", "vegetarian", "vegan", "glutenfree"]),
 });
 
-export const rsvpSchema = z.object({
-  firstName: z.string().min(2, "Ime mora imati najmanje 2 slova"),
-  lastName: z.string().min(2, "Prezime mora imati najmanje 2 slova"),
-  email: z.string().email("Nevažeća email adresa").optional().or(z.literal("")),
-  phone: z.string().optional(),
-  status: z.enum(["confirmed", "declined", "maybe"]),
-  partySize: z.number().min(1).max(10),
-  dietaryNeeds: z.enum(["omnivore", "vegetarian", "vegan", "glutenfree"]),
-  partyMembers: z.array(partyMemberSchema).min(1).max(10),
-});
+export const rsvpSchema = z
+  .object({
+    firstName: z.string().min(2, "Ime mora imati najmanje 2 slova"),
+    lastName: z.string().min(2, "Prezime mora imati najmanje 2 slova"),
+    email: z.string().email("Nevažeća email adresa").optional().or(z.literal("")),
+    phone: z.string().optional(),
+    status: z.enum(["confirmed", "declined", "maybe"]),
+    partySize: z.number().min(1).max(10),
+    dietaryNeeds: z.enum(["omnivore", "vegetarian", "vegan", "glutenfree"]),
+    partyMembers: z.array(partyMemberSchema).max(10),
+  })
+  // Imena članova grupe validiramo samo kad gost dolazi — kad odbije,
+  // sekcija je skrivena i ne smije blokirati slanje forme
+  .superRefine((data, ctx) => {
+    if (data.status !== "confirmed") return;
+    data.partyMembers.forEach((m, i) => {
+      if (i === 0) return; // osoba 1 = glavni gost, validiran kroz firstName/lastName
+      if (m.firstName.trim().length < 2) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["partyMembers", i, "firstName"],
+          message: "Ime mora imati najmanje 2 slova",
+        });
+      }
+      if (m.lastName.trim().length < 2) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["partyMembers", i, "lastName"],
+          message: "Prezime mora imati najmanje 2 slova",
+        });
+      }
+    });
+  });
 
 export const eventTimelineSchema = z.object({
   time: z.string(),

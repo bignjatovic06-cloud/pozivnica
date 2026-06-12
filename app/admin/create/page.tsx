@@ -23,7 +23,7 @@ export default function CreateEventPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
 
-  const { register, handleSubmit, control, formState: { errors, isSubmitting }, watch } = useForm<CreateEventFormData>({
+  const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm<CreateEventFormData>({
     resolver: zodResolver(createEventSchema),
     defaultValues: { eventTimeline: DEFAULT_TIMELINE },
   });
@@ -46,7 +46,6 @@ export default function CreateEventPage() {
         eventTimeline: data.eventTimeline,
         adminId: user.uid,
         adminEmail: data.adminEmail,
-        adminPassword: "",
         status: "active",
       });
       toast.success("Event uspješno kreiran!");

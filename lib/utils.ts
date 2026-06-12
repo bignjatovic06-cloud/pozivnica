@@ -1,18 +1,18 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { format } from "date-fns";
-import { sr } from "date-fns/locale";
+import { srLatn } from "date-fns/locale";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 export function formatDate(date: Date): string {
-  return format(date, "EEEE, d. MMMM yyyy.", { locale: sr });
+  return format(date, "EEEE, d. MMMM yyyy.", { locale: srLatn });
 }
 
 export function formatDateTime(date: Date): string {
-  return format(date, "d.MM.yyyy. HH:mm", { locale: sr });
+  return format(date, "d.MM.yyyy. HH:mm", { locale: srLatn });
 }
 
 export function formatTime(date: Date): string {

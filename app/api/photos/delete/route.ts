@@ -3,8 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(request: NextRequest) {
   const { publicId } = await request.json();
 
-  if (!publicId) {
-    return NextResponse.json({ error: "Missing publicId" }, { status: 400 });
+  // Dozvoli brisanje samo unutar app foldera — spriječava brisanje
+  // drugih fajlova na istom Cloudinary računu
+  if (typeof publicId !== "string" || !publicId.startsWith("pozivnica/")) {
+    return NextResponse.json({ error: "Invalid publicId" }, { status: 400 });
   }
 
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME!;

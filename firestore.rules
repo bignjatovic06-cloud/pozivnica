@@ -2,34 +2,40 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Events - samo creator može čitati/pisati
+    function isEventAdmin(eventId) {
+      return request.auth != null &&
+        request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.adminId;
+    }
+
     match /events/{eventId} {
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.adminId;
-      allow create: if request.auth != null;
+      // Gosti otvaraju pozivnicu bez logina — pojedinačno čitanje je javno
+      allow get: if true;
+      // Listanje evenata samo za vlasnika (dashboard upit: where adminId == uid)
+      allow list: if request.auth != null && resource.data.adminId == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.adminId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.adminId == request.auth.uid;
 
-      // Guests - svi mogu kreirati (RSVP), admin može čitati sve
       match /guests/{guestId} {
-        allow create: if true; // RSVP bez logina
-        allow read, update, delete: if request.auth != null &&
-          request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.adminId;
-        allow read: if request.auth != null && request.auth.uid == guestId;
-      }
-
-      // Photos - gosti mogu dodavati i brisati svoje, admin vidi sve
-      match /photos/{photoId} {
+        // Gost čita svoj RSVP preko ID-a sačuvanog u svom browseru
+        allow get: if true;
+        // RSVP se šalje bez logina
         allow create: if true;
-        allow read: if true;
-        allow delete: if request.auth != null && (
-          request.auth.uid == resource.data.guestId ||
-          request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.adminId
-        );
+        // Lista svih gostiju, izmjene i brisanje — samo admin
+        allow list, update, delete: if isEventAdmin(eventId);
       }
 
-      // Tables - samo admin
+      match /photos/{photoId} {
+        allow read: if true;
+        allow create: if true;
+        // Gosti brišu svoje slike bez logina (v1 — nema guest auth)
+        allow delete: if true;
+        allow update: if false;
+      }
+
       match /tables/{tableId} {
-        allow read, write: if request.auth != null &&
-          request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.adminId;
-        allow read: if true; // Gosti vide raspored
+        // Gosti vide raspored sjedenja (tab "Moj stol")
+        allow read: if true;
+        allow write: if isEventAdmin(eventId);
       }
     }
   }

@@ -17,8 +17,6 @@ interface Props {
   onComplete: (guestId: string) => void;
 }
 
-const DEFAULT_MEMBER = { id: crypto.randomUUID(), firstName: "", lastName: "", dietaryNeeds: "omnivore" as const };
-
 export default function RSVPTab({ eventId, guestId, onComplete }: Props) {
   const [existingGuest, setExistingGuest] = useState<Guest | null>(null);
   const [loadingGuest, setLoadingGuest] = useState(true);
@@ -30,13 +28,15 @@ export default function RSVPTab({ eventId, guestId, onComplete }: Props) {
       status: "confirmed",
       partySize: 1,
       dietaryNeeds: "omnivore",
-      partyMembers: [{ ...DEFAULT_MEMBER }],
+      partyMembers: [{ id: "member-0", firstName: "", lastName: "", dietaryNeeds: "omnivore" }],
     },
   });
 
   const { fields, append, remove } = useFieldArray({ control, name: "partyMembers" });
   const partySize = watch("partySize");
   const status = watch("status");
+  const mainFirstName = watch("firstName");
+  const mainLastName = watch("lastName");
 
   useEffect(() => {
     const load = async () => {
@@ -60,8 +60,20 @@ export default function RSVPTab({ eventId, guestId, onComplete }: Props) {
     }
   }, [partySize, fields.length, append, remove]);
 
+  // Osoba 1 = glavni gost; ime se ne unosi dvaput nego se preslikava iz glavnih polja
+  useEffect(() => {
+    setValue("partyMembers.0.firstName", mainFirstName || "");
+    setValue("partyMembers.0.lastName", mainLastName || "");
+  }, [mainFirstName, mainLastName, setValue]);
+
   const onSubmit = async (data: RSVPFormData) => {
     try {
+      const isConfirmed = data.status === "confirmed";
+      const partyMembers = isConfirmed
+        ? data.partyMembers.map((m, i) =>
+            i === 0 ? { ...m, firstName: data.firstName, lastName: data.lastName } : m
+          )
+        : [];
       const newGuestId = await createGuest(eventId, {
         eventId,
         firstName: data.firstName,
@@ -69,9 +81,9 @@ export default function RSVPTab({ eventId, guestId, onComplete }: Props) {
         email: data.email || "",
         phone: data.phone || "",
         status: data.status,
-        partySize: data.partySize,
-        dietaryNeeds: data.dietaryNeeds,
-        partyMembers: data.partyMembers,
+        partySize: isConfirmed ? data.partySize : 1,
+        dietaryNeeds: isConfirmed ? partyMembers[0]?.dietaryNeeds ?? "omnivore" : data.dietaryNeeds,
+        partyMembers,
       });
       setSubmitted(true);
       toast.success("RSVP uspješno poslan!");
@@ -96,7 +108,7 @@ export default function RSVPTab({ eventId, guestId, onComplete }: Props) {
             : "Vaš RSVP je uspješno zabilježen."}
         </p>
         {existingGuest?.status === "confirmed" && (
-          <p className="text-sm text-gray-400">Kada admin napravi raspored sjedenja, vidjet ćete vaš stol na tabi "Moj stol"</p>
+          <p className="text-sm text-gray-400">Kada admin napravi raspored sjedenja, vidjet ćete vaš stol na tabi &quot;Moj stol&quot;</p>
         )}
         {existingGuest && (
           <div className="mt-6 bg-gray-50 rounded-xl p-4 text-left">
@@ -131,6 +143,7 @@ export default function RSVPTab({ eventId, guestId, onComplete }: Props) {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">Email (opciono)</label>
           <input {...register("email")} type="email" className="input-field" placeholder="vasa@email.com" />
+          {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
         </div>
 
         <div>
@@ -178,13 +191,9 @@ export default function RSVPTab({ eventId, guestId, onComplete }: Props) {
                 </button>
               ))}
               {partySize > 5 && (
-                <input
-                  {...register("partySize", { valueAsNumber: true })}
-                  type="number"
-                  min={1}
-                  max={10}
-                  className="input-field w-20"
-                />
+                <div className="w-12 h-12 rounded-xl font-semibold border-2 border-[#8B5A8E] bg-[#8B5A8E] text-white flex items-center justify-center">
+                  {partySize}
+                </div>
               )}
             </div>
           </div>
@@ -194,7 +203,9 @@ export default function RSVPTab({ eventId, guestId, onComplete }: Props) {
               <div key={field.id} className="card space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-gray-800">
-                    {index === 0 ? "Vi" : `Osoba ${index + 1}`}
+                    {index === 0
+                      ? `Vi${mainFirstName ? ` — ${mainFirstName} ${mainLastName || ""}` : ""}`
+                      : `Osoba ${index + 1}`}
                   </h3>
                   {index > 0 && (
                     <button type="button" onClick={() => { remove(index); setValue("partySize", partySize - 1); }} className="text-red-400 hover:text-red-600">
@@ -203,19 +214,24 @@ export default function RSVPTab({ eventId, guestId, onComplete }: Props) {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Ime</label>
-                    <input {...register(`partyMembers.${index}.firstName`)} className="input-field text-sm" placeholder="Ime" />
-                    {errors.partyMembers?.[index]?.firstName && (
-                      <p className="text-red-500 text-xs mt-1">{errors.partyMembers[index]?.firstName?.message}</p>
-                    )}
+                {index > 0 && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Ime</label>
+                      <input {...register(`partyMembers.${index}.firstName`)} className="input-field text-sm" placeholder="Ime" />
+                      {errors.partyMembers?.[index]?.firstName && (
+                        <p className="text-red-500 text-xs mt-1">{errors.partyMembers[index]?.firstName?.message}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Prezime</label>
+                      <input {...register(`partyMembers.${index}.lastName`)} className="input-field text-sm" placeholder="Prezime" />
+                      {errors.partyMembers?.[index]?.lastName && (
+                        <p className="text-red-500 text-xs mt-1">{errors.partyMembers[index]?.lastName?.message}</p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Prezime</label>
-                    <input {...register(`partyMembers.${index}.lastName`)} className="input-field text-sm" placeholder="Prezime" />
-                  </div>
-                </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-2">Dijetalne preferencije</label>
@@ -250,21 +266,6 @@ export default function RSVPTab({ eventId, guestId, onComplete }: Props) {
             )}
           </div>
         </>
-      )}
-
-      {/* Dietary for main guest if not showing party members */}
-      {status !== "confirmed" && (
-        <div className="card">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Vaše dijetalne preferencije</label>
-          <div className="grid grid-cols-2 gap-2">
-            {Object.entries(DIETARY_LABELS).map(([value, label]) => (
-              <label key={value} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
-                <input {...register("dietaryNeeds")} type="radio" value={value} className="accent-[#8B5A8E]" />
-                <span className="text-sm text-gray-700">{label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
       )}
 
       <button type="submit" disabled={isSubmitting} className="btn-primary w-full text-base py-4 flex items-center justify-center gap-2">

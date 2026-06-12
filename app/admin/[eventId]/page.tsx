@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Users, LayoutDashboard, Camera, ExternalLink, ArrowLeft, Heart, LogOut, Copy, Check } from "lucide-react";
@@ -16,12 +16,20 @@ import PhotoManagement from "./components/PhotoManagement";
 
 type Tab = "rsvp" | "seating" | "photos";
 
+const emptySubscribe = () => () => {};
+
 export default function AdminEventPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("rsvp");
   const [copied, setCopied] = useState(false);
+  // window.location ne postoji na serveru — server render vraća "", klijent pravi URL
+  const eventUrl = useSyncExternalStore(
+    emptySubscribe,
+    () => `${window.location.origin}/event/${eventId}`,
+    () => ""
+  );
 
   const { data: event, isLoading } = useQuery({
     queryKey: ["event", eventId],
@@ -44,8 +52,6 @@ export default function AdminEventPage() {
     await logOut();
     router.push("/admin/login");
   };
-
-  const eventUrl = typeof window !== "undefined" ? `${window.location.origin}/event/${eventId}` : "";
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(eventUrl);

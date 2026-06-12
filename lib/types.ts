@@ -46,7 +46,6 @@ export interface Event {
   eventTimeline: EventTimeline[];
   adminId: string;
   adminEmail: string;
-  adminPassword: string;
   createdAt: Date;
   updatedAt: Date;
   status: EventStatus;

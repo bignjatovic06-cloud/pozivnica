@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, Download, Trash2, Edit2, ChevronDown, Users, CheckCircle, XCircle, HelpCircle } from "lucide-react";
+import { Search, Download, Trash2, Edit2, Users, CheckCircle, XCircle, HelpCircle } from "lucide-react";
 import toast from "react-hot-toast";
-import { subscribeToGuests, deleteGuest, getRSVPStats, updateGuest } from "@/lib/db";
+import { subscribeToGuests, deleteGuest, computeRSVPStats, updateGuest } from "@/lib/db";
 import type { Guest, RSVPStats } from "@/lib/types";
 import { DIETARY_LABELS, STATUS_LABELS, STATUS_COLORS, formatDateTime } from "@/lib/utils";
 import Modal from "@/components/common/Modal";
@@ -25,11 +25,10 @@ export default function RSVPManagement({ eventId }: Props) {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsub = subscribeToGuests(eventId, async (g) => {
+    const unsub = subscribeToGuests(eventId, (g) => {
       setGuests(g);
+      setStats(computeRSVPStats(g));
       setLoading(false);
-      const s = await getRSVPStats(eventId);
-      setStats(s);
     });
     return unsub;
   }, [eventId]);
@@ -63,6 +62,7 @@ export default function RSVPManagement({ eventId }: Props) {
   };
 
   const exportCSV = () => {
+    const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
     const rows = [
       ["Prezime", "Ime", "Email", "Status", "Broj osoba", "Dijetalne potrebe", "Stol"],
       ...filtered.map((g) => [
@@ -75,7 +75,7 @@ export default function RSVPManagement({ eventId }: Props) {
         g.assignedTable || "Nije dodijeljen",
       ]),
     ];
-    const csv = rows.map((r) => r.join(",")).join("\n");
+    const csv = rows.map((r) => r.map(esc).join(",")).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

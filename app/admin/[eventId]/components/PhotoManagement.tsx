@@ -14,7 +14,7 @@ interface Props {
   eventId: string;
 }
 
-type SortBy = "newest" | "lastName" | "count";
+type SortBy = "newest" | "lastName";
 
 export default function PhotoManagement({ eventId }: Props) {
   const [photos, setPhotos] = useState<Photo[]>([]);
